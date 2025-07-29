@@ -1,28 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he">
 <head>
-  <meta charset="UTF-8" />
-  <title>Voice Changer</title>
+  <meta charset="UTF-8">
+  <title>שינוי קול</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 40px auto;
-      padding: 20px;
-      text-align: center;
       background-color: #111;
       color: #fff;
-      border-radius: 10px;
+      text-align: center;
+      padding: 30px;
     }
-    button {
-      font-size: 18px;
-      padding: 10px 20px;
+    button, select {
       margin: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
       border: none;
       border-radius: 6px;
+      cursor: pointer;
+    }
+    button {
       background-color: #ff4081;
       color: white;
-      cursor: pointer;
     }
     audio {
       margin-top: 20px;
@@ -30,45 +29,92 @@
   </style>
 </head>
 <body>
-  <h1>🎙️ Voice Recorder</h1>
-  <button id="startBtn">Start Recording</button>
-  <button id="stopBtn" disabled>Stop Recording</button>
-  <br />
-  <audio id="player" controls></audio>
+  <h1>🎙️ שינוי קול</h1>
+
+  <button id="recordBtn">🎤 התחל הקלטה</button>
+  <button id="stopBtn" disabled>⏹️ עצור הקלטה</button>
+
+  <br>
+  <label for="voiceEffect">בחר קול:</label>
+  <select id="voiceEffect">
+    <option value="normal">רגיל</option>
+    <option value="high">גבוה ומצחיק</option>
+    <option value="low">עמוק ומפחיד</option>
+  </select>
+
+  <br>
+  <audio id="audioPlayer" controls></audio>
 
   <script>
     let mediaRecorder;
-    let recordedChunks = [];
+    let audioChunks = [];
+    let audioBlob;
 
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const player = document.getElementById('player');
+    const recordBtn = document.getElementById("recordBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const audioPlayer = document.getElementById("audioPlayer");
+    const voiceEffect = document.getElementById("voiceEffect");
 
-    startBtn.onclick = async () => {
+    recordBtn.onclick = async () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
 
-      recordedChunks = [];
-
-      mediaRecorder.ondataavailable = e => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-        player.src = URL.createObjectURL(blob);
+        audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const url = URL.createObjectURL(audioBlob);
+        applyEffectAndPlay(url);
       };
 
       mediaRecorder.start();
-      startBtn.disabled = true;
+      recordBtn.disabled = true;
       stopBtn.disabled = false;
     };
 
     stopBtn.onclick = () => {
       mediaRecorder.stop();
-      startBtn.disabled = false;
+      recordBtn.disabled = false;
       stopBtn.disabled = true;
     };
+
+    function applyEffectAndPlay(url) {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createBufferSource();
+      const request = new XMLHttpRequest();
+
+      request.open('GET', url, true);
+      request.responseType = 'arraybuffer';
+
+      request.onload = function () {
+        const audioData = request.response;
+
+        audioCtx.decodeAudioData(audioData, function(buffer) {
+          source.buffer = buffer;
+
+          // שינוי מהירות להשפעה על הקול
+          const effect = voiceEffect.value;
+          if (effect === "high") {
+            source.playbackRate.value = 1.8;
+          } else if (effect === "low") {
+            source.playbackRate.value = 0.6;
+          } else {
+            source.playbackRate.value = 1.0;
+          }
+
+          source.connect(audioCtx.destination);
+          source.start(0);
+        });
+      };
+      request.send();
+
+      audioPlayer.src = url;
+    }
   </script>
 </body>
 </html>
