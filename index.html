@@ -1,117 +1,163 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Voice Changer App</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Voice Master App</title>
   <style>
+    * { box-sizing: border-box; margin:0; padding:0; }
     body {
       font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 40px auto;
-      padding: 0 20px;
-      text-align: center;
-      background: #f0f0f0;
+      background:#181818; color:#f0f0f0;
+      display:flex; justify-content:center; align-items:center;
+      height:100vh; padding:20px;
+    }
+    .app {
+      background:#222; padding:30px; width:100%; max-width:400px;
+      border-radius:12px; box-shadow:0 0 20px rgba(0,0,0,0.7);
+      position:relative;
+    }
+    h1 {
+      text-align:center; margin-bottom:20px; font-size:1.8em;
+    }
+    input, select, button {
+      width:100%; padding:12px 15px; margin:10px 0;
+      border-radius:8px; border:none; font-size:16px;
     }
     button {
-      font-size: 16px;
-      padding: 10px 20px;
-      margin: 10px 5px;
-      cursor: pointer;
+      background:#00aaff; color:#fff; cursor:pointer;
+      transition:background .3s ease;
     }
-    select {
-      font-size: 16px;
-      padding: 8px;
-      margin: 10px;
+    button:hover { background:#0088cc; }
+    select { background:#333; color:#f0f0f0; }
+    input { background:#333; color:#f0f0f0; }
+    audio { margin-top:20px; width:100%; outline:none; }
+    #avatar {
+      position:absolute; top:-15px; right:-15px;
+      background:#00aaff; width:40px; height:40px;
+      border-radius:50%; font-size:20px; color:white;
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 0 10px rgba(0,0,0,0.5);
     }
   </style>
 </head>
 <body>
-  <h1>Voice Changer</h1>
+  <div class="app">
+    <div id="avatar" style="display:none;"></div>
+    <h1>Voice Master</h1>
 
-  <button id="recordBtn">🎙️ Start Recording</button>
-  <button id="stopBtn" disabled>🛑 Stop</button>
-  <br />
+    <div id="auth">
+      <input id="nameInput" placeholder="שם מלא">
+      <input id="emailInput" type="email" placeholder="אימייל">
+      <input id="passwordInput" type="password" placeholder="סיסמה">
+      <button id="registerBtn">הרשמה / כניסה</button>
+    </div>
 
-  <select id="voiceEffect">
-    <option value="normal">Normal</option>
-    <option value="chipmunk">Chipmunk (High)</option>
-    <option value="robot">Robot</option>
-    <option value="deep">Deep</option>
-  </select>
-  <br />
-
-  <button id="playBtn" disabled>▶️ Play with Effect</button>
-  <button id="saveBtn" disabled>💾 Save</button>
-  <button id="shareBtn" disabled>📤 Share</button>
+    <div id="voiceUI" style="display:none;">
+      <button id="recordBtn">🎙️ הקלט</button>
+      <button id="stopBtn" disabled>⏹️ עצור</button>
+      <select id="effectSelect">
+        <option value="normal">ללא שינוי</option>
+        <option value="chipmunk">👶 גבוה (Chipmunk)</option>
+        <option value="robot">🤖 רובוטי</option>
+        <option value="deep">💪 עמוק</option>
+      </select>
+      <button id="playBtn" disabled>▶️ השמע</button>
+      <button id="saveBtn" disabled>💾 שמור</button>
+      <button id="shareBtn" disabled>📤 שתף</button>
+      <audio id="player" controls></audio>
+    </div>
+  </div>
 
   <script>
-    let mediaRecorder;
-    let recordedChunks = [];
-    let audioBlob;
+    const registerBtn = document.getElementById('registerBtn');
+    const authDiv = document.getElementById('auth');
+    const voiceUI = document.getElementById('voiceUI');
+    const avatarDiv = document.getElementById('avatar');
+
+    const nameInput = document.getElementById('nameInput');
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+
+    registerBtn.onclick = () => {
+      const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+      const pwd = passwordInput.value;
+      if (!name || !email || !pwd) return alert('מלא את כל השדות!');
+      localStorage.setItem('vmUser', JSON.stringify({ name, email }));
+      authDiv.style.display='none';
+      voiceUI.style.display='block';
+      avatarDiv.textContent = name[0];
+      avatarDiv.style.display = 'flex';
+    };
+
+    window.onload = () => {
+      const u = JSON.parse(localStorage.getItem('vmUser') || 'null');
+      if (u) {
+        authDiv.style.display='none';
+        voiceUI.style.display='block';
+        avatarDiv.textContent = u.name[0];
+        avatarDiv.style.display = 'flex';
+      }
+    };
+
+    // --- Recording & voice logic ---
+    let recorder, chunks = [], audioBlob;
 
     const recordBtn = document.getElementById('recordBtn');
     const stopBtn = document.getElementById('stopBtn');
     const playBtn = document.getElementById('playBtn');
     const saveBtn = document.getElementById('saveBtn');
     const shareBtn = document.getElementById('shareBtn');
-    const voiceEffect = document.getElementById('voiceEffect');
+    const effectSelect = document.getElementById('effectSelect');
+    const player = document.getElementById('player');
 
     recordBtn.onclick = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recordedChunks = [];
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        audioBlob = new Blob(recordedChunks, { type: 'audio/webm' });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      recorder = new MediaRecorder(stream);
+      chunks = [];
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = () => {
+        audioBlob = new Blob(chunks, { type:'audio/webm' });
         playBtn.disabled = false;
         saveBtn.disabled = false;
         shareBtn.disabled = false;
+        player.src = URL.createObjectURL(audioBlob);
       };
-      mediaRecorder.start();
-      recordBtn.disabled = true;
-      stopBtn.disabled = false;
+      recorder.start();
+      recordBtn.disabled = true; stopBtn.disabled = false;
     };
 
     stopBtn.onclick = () => {
-      mediaRecorder.stop();
-      recordBtn.disabled = false;
-      stopBtn.disabled = true;
+      recorder.stop();
+      recordBtn.disabled = false; stopBtn.disabled = true;
     };
 
     playBtn.onclick = () => {
       if (!audioBlob) return;
-
-      const audioContext = new AudioContext();
-      const source = audioContext.createBufferSource();
+      const effect = effectSelect.value;
+      const context = new AudioContext();
       const reader = new FileReader();
-
-      reader.onloadend = async () => {
-        const arrayBuffer = reader.result;
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        source.buffer = audioBuffer;
-
-        let playbackRate = 1;
-        if (voiceEffect.value === 'chipmunk') playbackRate = 1.6;
-        if (voiceEffect.value === 'deep') playbackRate = 0.6;
-
-        const gainNode = audioContext.createGain();
-        const filter = audioContext.createBiquadFilter();
-
-        if (voiceEffect.value === 'robot') {
-          filter.type = 'highpass';
-          filter.frequency.value = 1000;
-          source.connect(filter);
-          filter.connect(gainNode);
+      reader.onload = async () => {
+        const buf = await context.decodeAudioData(reader.result);
+        const src = context.createBufferSource();
+        src.buffer = buf;
+        let rate = 1;
+        if (effect === 'chipmunk') rate = 1.6;
+        if (effect === 'deep') rate = 0.6;
+        src.playbackRate.value = rate;
+        const gain = context.createGain();
+        if (effect === 'robot') {
+          const delay = context.createDelay();
+          delay.delayTime.value = 0.08;
+          src.connect(delay);
+          delay.connect(gain);
         } else {
-          source.connect(gainNode);
+          src.connect(gain);
         }
-
-        gainNode.connect(audioContext.destination);
-        source.playbackRate.value = playbackRate;
-        source.start(0);
+        gain.connect(context.destination);
+        src.start(0);
       };
-
       reader.readAsArrayBuffer(audioBlob);
     };
 
@@ -119,26 +165,17 @@
       if (!audioBlob) return;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(audioBlob);
-      a.download = 'voice.webm';
+      a.download = 'my_voice.webm';
       a.click();
     };
 
     shareBtn.onclick = async () => {
-      if (!navigator.canShare || !navigator.canShare({ files: [new File([audioBlob], "voice.webm")] })) {
-        alert("Sharing not supported on this device.");
-        return;
-      }
-
-      const file = new File([audioBlob], "voice.webm", { type: "audio/webm" });
-
+      if (!navigator.canShare || !audioBlob) return alert("שיתוף לא נתמך");
+      const file = new File([audioBlob], 'my_voice.webm', { type:'audio/webm' });
       try {
-        await navigator.share({
-          files: [file],
-          title: "My Funny Voice",
-          text: "Check out my voice!",
-        });
-      } catch (err) {
-        console.error("Share failed:", err);
+        await navigator.share({ title:'My Voice', files:[file], text:'Check this out!' });
+      } catch(e){
+        console.error(e);
       }
     };
   </script>
